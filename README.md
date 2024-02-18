@@ -8,7 +8,7 @@
   
 
 ## Diagram
-![Diagram](diagram.png?raw=true "Quick Diagram")
+![Diagram](diagram.jpg "Quick Diagram")
 * First pass of the diagram
 * Not all of the API routes(delete, post, etc) are mapped out in the diagram
 

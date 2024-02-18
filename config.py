@@ -9,6 +9,7 @@ email_domain = "emails.baldanzasolutions.com"
 cloudfront_domain = "emails.baldanzasolutions.com"
 log_level = "INFO"
 xray_enabled = "true"
+public_registration = True
 
 ### Stack References ###
 route53_stack = pulumi.StackReference("BaldanzaSolutions/922023841991-route53/prod")

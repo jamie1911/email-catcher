@@ -1,0 +1,64 @@
+image:
+  name: pulumi/pulumi-python
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PULUMI_HOME: "$CI_PROJECT_DIR/.pulumi/"
+
+cache:
+  paths:
+    - .cache/pip
+    - .pulumi/plugins
+
+stages:
+  - test
+  - update
+
+before_script:
+  - apt-get update
+  - apt-get install -y jq
+  - pip install awscli pulumi
+  - aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+  - aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+  - aws configure set region "${AWS_REGION:-us-east-2}"
+  - readonly CREDS_JSON="$(aws sts assume-role --role-arn "arn:aws:iam::XXXXXXXX:role/system/ci.cd.deployment.role" --role-session-name "gitlab-ci-cd")"
+  - export AWS_ACCESS_KEY_ID=$(echo "${CREDS_JSON}"     | jq ".Credentials.AccessKeyId" --raw-output)
+  - export AWS_SECRET_ACCESS_KEY=$(echo "${CREDS_JSON}" | jq ".Credentials.SecretAccessKey" --raw-output)
+  - export AWS_SESSION_TOKEN=$(echo "${CREDS_JSON}"     | jq ".Credentials.SessionToken" --raw-output)
+
+set_variable_on_change:
+  tags:
+  stage: test
+  rules:
+    - changes:
+        - frontend/**/*
+  before_script:
+    - echo "Checking for changes in frontend"
+  script:
+    - echo "CHANGES_IN_FRONTEND=True" >> deploy.env
+  artifacts:
+    reports:
+      dotenv: deploy.env
+
+Pulumi AWS EMAIL-CATCHER Preview:
+  interruptible: true
+  needs:
+    - job: set_variable_on_change
+      optional: true
+  stage: update
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    
+    - python -u deploy.py --stack-name prod --command preview
+
+Pulumi AWS EMAIL-CATCHER Update:
+  resource_group: $CI_JOB_NAME
+  needs:
+    - job: set_variable_on_change
+      optional: true
+  stage: update
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python -u deploy.py --stack-name prod --command up

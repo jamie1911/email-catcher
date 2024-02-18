@@ -10,7 +10,7 @@ from config import (
     product_name,
     cloudfront_domain,
     aws_region,
-    public_registration,
+    disable_public_registration,
 )
 
 register_standard_tags(environment=stack)
@@ -20,7 +20,7 @@ user_pool = aws.cognito.UserPool(
     username_attributes=["email"],
     auto_verified_attributes=["email"],
     admin_create_user_config=aws.cognito.UserPoolAdminCreateUserConfigArgs(
-        allow_admin_create_user_only=public_registration
+        allow_admin_create_user_only=disable_public_registration
     ),
 )
 

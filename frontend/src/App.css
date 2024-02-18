@@ -1,0 +1,89 @@
+/* Default Style for Larger Screens */
+.form-flex {
+    flex-direction: row;
+    /* Elements in a row */
+}
+
+.form-label,
+.form-input {
+    width: auto;
+    /* Default width */
+}
+
+.form-input {
+    flex-grow: 0;
+    /* Prevent the input from growing */
+    flex-basis: 25%;
+    /* Base width */
+}
+
+@media screen and (max-width: 600px) {
+    .form-flex {
+        flex-wrap: wrap;
+        /* Allow items to wrap onto the next line */
+    }
+
+    .form-label {
+        width: 100%;
+        /* Full width for the label */
+    }
+
+    .form-input {
+        flex-grow: 1;
+        /* Allow input to grow to fill space */
+    }
+
+    .responsive-table {
+        border: 0;
+    }
+
+    .responsive-table thead {
+        display: none;
+    }
+
+    .responsive-table tr {
+        margin-bottom: 10px;
+        display: block;
+        border-bottom: 3px solid #ddd;
+    }
+
+    .responsive-table td {
+        display: block;
+        text-align: right;
+        font-size: 0.8em;
+        border-bottom: 1px dotted #ccc;
+    }
+
+    .responsive-table td:last-child {
+        border-bottom: 0;
+    }
+
+    .responsive-table td:before {
+        content: attr(data-label);
+        float: left;
+        font-weight: bold;
+    }
+
+    .email-header h2 {
+        font-size: 0.8em;
+        /* Slightly smaller font on small screens */
+    }
+
+    .email-content {
+        /* Add any specific styling you need here */
+        word-wrap: break-word;
+    }
+
+    /* Responsive Flexbox and Text Wrapping */
+    .header-flex {
+        flex-direction: column;
+        /* Stack items vertically on smaller screens */
+    }
+
+    .email-header h2 {
+        word-wrap: break-word;
+        /* Ensures long words do not cause overflow */
+        font-size: 1em;
+        /* Adjust the font size if needed */
+    }
+}

@@ -41,3 +41,11 @@ When you login and view your addresses, you can go into one of the addresses. On
 * Update `email_domain` with the domain you wish to receive emails on
 * Update `cloudfront_domain` with the domain for the web interface
 * If you want to use the summary feature, your account must be allowed to use the Amazon Titan Model `amazon.titan-text-lite-v1`
+
+## Demo
+* Select an address
+![Select Address](photo1.jpg "Select an address")
+* View all emails for an address
+![View Emails](photo2.jpg "View emails")
+* View a selected email
+![View Selected Email](photo3.jpg "View selected email")

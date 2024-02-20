@@ -1,5 +1,6 @@
 # WIP #
 * Built for example purposes
+* Completely serverless
 * The documentation and code is work in progress
 * The application functions however, it is a bit rough around the edges
   * No front end prompts when deleting emails or email addresses
@@ -36,11 +37,19 @@ When you login and view your addresses, you can go into one of the addresses. On
 
 
 ## Configuration
-* Assumes a route53 zone exists already, update `cloudfront_route35_zone_id` with the zone identifier
-* Assumes you already have a SES rule set defined for your domain, update `ses_domain_rule_set_name` with the name of the rule set
-* Update `email_domain` with the domain you wish to receive emails on
-* Update `cloudfront_domain` with the domain for the web interface
+* Update PULUMI_ORG = `"PULUMI_ORG"` in deploy.py to match your pulumi organization name
+* Update PULUMI_PROJECT_NAME = `"PULUMI_PROJECT_NAME"` in deploy.py to your desired pulumi project name
+* Assumes a route53 zone exists already, update `cloudfront_route35_zone_id` in config.py with the zone identifier
+* Assumes you already have a SES rule set defined for your domain, update `ses_domain_rule_set_name` in config.py with the name of the rule set
+* Update `email_domain` in config.py with the domain you wish to receive emails on
+* Update `cloudfront_domain` in config.py with the domain for the web interface
 * If you want to use the summary feature, your account must be allowed to use the Amazon Titan Model `amazon.titan-text-lite-v1`
+* install/have npm locally to allow deploy.py to build and deploy the front end
+* install/have python locally with venv module installed
+* install python requirements.txt file
+* have pulumi local environment setup
+* run `python deploy.py --command preview --stack NAME OF STACK --region us-east-2 (default)
+* if the above works and the changes look okay, change --command to up
 
 ## Demo
 * Select an address

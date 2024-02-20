@@ -1,12 +1,11 @@
 #!python
-import sys
 import os
 import subprocess
 import argparse
 import pulumi
 
-PULUMI_ORG = "BaldanzaSolutions"
-PULUMI_PROJECT_NAME = "aws.922023841991.applications.email-catcher"
+PULUMI_ORG = "PULUMI_ORG"
+PULUMI_PROJECT_NAME = "PULUMI_PROJECT_NAME"
 PULUMI_PROJECT_DESC = "pulumi code to support and deploy the email catcher"
 PULUMI_WORK_DIR = os.path.join(os.path.dirname(__file__), ".")
 
@@ -117,7 +116,7 @@ def main(stack_name: str, command: str, region: str, force: bool):
         cwd=f"{PULUMI_WORK_DIR}",
         capture_output=True,
     )
-    subprocess.run(
+    subprocess.run( #needed due to current boto3 running in lambda doesnt have bedrock support
         [
             "pip",
             "install",

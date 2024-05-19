@@ -8,7 +8,9 @@ from config import (
     stack,
     product_name,
     email_domain,
-    ses_domain_rule_set_name, email_route35_zone_id, aws_region
+    ses_domain_rule_set_name,
+    email_route35_zone_id,
+    aws_region,
 )
 from aws_lambda import incoming_mail_check_function, incoming_mail_topic
 from s3 import email_bucket

@@ -1,11 +1,16 @@
 import sys
 import pulumi
 import pulumi_aws as aws
+from config import (
+    stack,
+    product_name,
+    cloudfront_web_domain,
+    cloudfront_route35_zone_id,
+)
 
 sys.path.insert(0, "../../../../")
-
 from shared.aws.tagging import register_standard_tags
-from config import stack, product_name, cloudfront_domain, cloudfront_route35_zone_id
+
 
 register_standard_tags(environment=stack)
 
@@ -17,7 +22,7 @@ useast1_provider = aws.Provider(
 )
 certificate = aws.acm.Certificate(
     f"{product_name}_certificate",
-    domain_name=cloudfront_domain,
+    domain_name=cloudfront_web_domain,
     validation_method="DNS",
     opts=pulumi.ResourceOptions(provider=useast1_provider),
 )
@@ -55,7 +60,7 @@ pulumi.export("portal_bucket_name", portal_bucket.bucket)
 cf_distribution = aws.cloudfront.Distribution(
     f"{product_name}_cf_distribution",
     enabled=True,
-    aliases=[cloudfront_domain],
+    aliases=[cloudfront_web_domain],
     default_root_object="index.html",
     http_version="http2",
     is_ipv6_enabled=True,
@@ -153,7 +158,7 @@ portal_bucket_policy = aws.s3.BucketPolicy(
 
 cloudfront_dns = aws.route53.Record(
     f"{product_name}_cf_route53_record",
-    name=cloudfront_domain,
+    name=cloudfront_web_domain,
     zone_id=cloudfront_route35_zone_id,
     type="A",
     aliases=[

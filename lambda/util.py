@@ -53,5 +53,25 @@ def check_access(addresses_table, user_sub, destination, full_response=False):
         raise e
 
 
+def check_summarize(addresses_table, destination):
+    try:
+        response = addresses_table.get_item(Key={"address": destination})
+        item = response.get("Item", None)
+        if item:
+            summarize = item.get("summarize_emails", None)
+            if summarize:
+                if summarize == True:
+                    logger.info("## SUMMARIZE EMAIL, CONTINUE")
+                    return True
+                else:
+                    logger.info("## DONT SUMMARIZE EMAIL")
+                    return False
+            return False
+    except Exception as e:
+        logger.error("## DynamoDB Client Exception")
+        logger.error(e)
+        raise e
+
+
 def get_user_sub_from_event(event):
     return event["requestContext"]["authorizer"]["claims"]["sub"]

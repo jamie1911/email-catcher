@@ -152,16 +152,35 @@ store_email_function_role = aws.iam.Role(
             ),
         ),
         aws.iam.RoleInlinePolicyArgs(
-            name="dynamodb_policy",
-            policy=pulumi.Output.all(emails_table_arn=emails_table.arn).apply(
+            name="access_policy",
+            policy=pulumi.Output.all(
+                emails_table_arn=emails_table.arn,
+                address_table_arn=addresses_table.arn,
+                email_bucket=email_bucket.arn
+            ).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Action": "dynamodb:PutItem",
+                                "Action": ["dynamodb:PutItem", "dynamodb:UpdateItem"],
                                 "Resource": args["emails_table_arn"],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "dynamodb:GetItem",
+                                "Resource": args["address_table_arn"],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:GetObject",
+                                "Resource": f"{args['email_bucket']}/*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": ["bedrock:InvokeModel"],
+                                "Resource": ["*"],
                             },
                         ],
                     }
@@ -186,7 +205,7 @@ store_email_function = aws.lambda_.Function(
             "emails_table_name": emails_table.name,
         }
     ),
-    timeout=30,
+    timeout=120,
     layers=[lambda_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
@@ -278,7 +297,7 @@ create_email_function_role = aws.iam.Role(
         ),
         aws.iam.RoleInlinePolicyArgs(
             name="address_table_policy",
-            policy=pulumi.Output.all(addresses_table_arn=addresses_table.arn).apply(
+            policy=pulumi.Output.all(address_table_arn=addresses_table.arn).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -286,7 +305,7 @@ create_email_function_role = aws.iam.Role(
                             {
                                 "Effect": "Allow",
                                 "Action": ["dynamodb:PutItem", "dynamodb:GetItem"],
-                                "Resource": args["addresses_table_arn"],
+                                "Resource": args["address_table_arn"],
                             },
                         ],
                     }
@@ -594,11 +613,6 @@ get_email_function_role = aws.iam.Role(
                                     args["emails_table_arn"],
                                     args["addresses_table_arn"],
                                 ],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": ["bedrock:InvokeModel"],
-                                "Resource": ["*"],
                             },
                         ],
                     }

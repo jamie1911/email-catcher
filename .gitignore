@@ -139,9 +139,9 @@ cython_debug/
 
 
 # dependencies
-/node_modules
 /.pnp
 .pnp.js
+node_modules
 
 # testing
 /coverage

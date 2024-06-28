@@ -1,4 +1,3 @@
-import sys
 import pulumi
 import pulumi_aws as aws
 from config import (
@@ -9,7 +8,6 @@ from config import (
     disable_public_registration,
 )
 
-sys.path.insert(0, "../../../../")
 from shared.aws.tagging import register_standard_tags
 
 register_standard_tags(environment=stack)

@@ -2,6 +2,8 @@
 import os
 import subprocess
 import argparse
+import yaml
+
 import pulumi
 
 PULUMI_ORG = "PULUMI_ORG"
@@ -9,12 +11,40 @@ PULUMI_PROJECT_NAME = "PULUMI_PROJECT_NAME"
 PULUMI_PROJECT_DESC = "pulumi code to support and deploy the email catcher"
 PULUMI_WORK_DIR = os.path.join(os.path.dirname(__file__), ".")
 
-with open(f"{PULUMI_WORK_DIR}/Pulumi.yaml", "r") as file:
-    content = file.read()
-content = content.replace("__PULUMI_PROJECT_NAME__", PULUMI_PROJECT_NAME)
-content = content.replace("__PULUMI_PROJECT_DESC__", PULUMI_PROJECT_DESC)
-with open(f"{PULUMI_WORK_DIR}/Pulumi.yaml", "w") as file:
-    file.write(content)
+pulumi_yaml_settings = {
+    "name": PULUMI_PROJECT_NAME,
+    "runtime.name": "python",
+    "runtime.options.virtualenv": "venv",
+    "description": PULUMI_PROJECT_DESC,
+}
+
+
+def pulumi_yaml(file_path, updates):
+    def set_nested_value(yaml_dict, key_path, value):
+        keys = key_path.split(".")
+        for key in keys[:-1]:
+            if key not in yaml_dict or not isinstance(yaml_dict[key], dict):
+                yaml_dict[key] = {}
+            yaml_dict = yaml_dict[key]
+        yaml_dict[keys[-1]] = value
+
+    # Read the existing YAML file or start with an empty dictionary if it does not exist
+    try:
+        with open(file_path, "r") as file:
+            yaml_content = yaml.safe_load(file) or {}
+    except FileNotFoundError:
+        yaml_content = {}
+
+    # Update YAML content with provided updates
+    for key_path, value in updates.items():
+        set_nested_value(yaml_content, key_path, value)
+
+    # Write the updated content back to the file, creating it if it doesn't exist
+    with open(file_path, "w") as file:
+        yaml.safe_dump(yaml_content, file, default_flow_style=False)
+
+
+pulumi_yaml(f"{PULUMI_WORK_DIR}/Pulumi.yaml", pulumi_yaml_settings)
 
 
 def frontend_env_config(pulumi_outputs):
@@ -116,7 +146,7 @@ def main(stack_name: str, command: str, region: str, force: bool):
         cwd=f"{PULUMI_WORK_DIR}",
         capture_output=True,
     )
-    subprocess.run( #needed due to current boto3 running in lambda doesnt have bedrock support
+    subprocess.run(
         [
             "pip",
             "install",

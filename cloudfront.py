@@ -1,4 +1,3 @@
-import sys
 import pulumi
 import pulumi_aws as aws
 from config import (
@@ -8,7 +7,6 @@ from config import (
     cloudfront_route35_zone_id,
 )
 
-sys.path.insert(0, "../../../../")
 from shared.aws.tagging import register_standard_tags
 
 

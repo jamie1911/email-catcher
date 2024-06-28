@@ -1,9 +1,7 @@
 import json
-import sys
 import pulumi
 import pulumi_aws as aws
 
-sys.path.insert(0, "../../../../")
 
 from shared.aws.tagging import register_standard_tags
 from config import stack, aws_account_id, product_name

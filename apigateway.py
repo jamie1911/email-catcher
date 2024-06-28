@@ -1,10 +1,8 @@
 import json
 import uuid
-import sys
 import pulumi
 import pulumi_aws as aws
 
-sys.path.insert(0, "../../../../")
 
 from shared.aws.tagging import register_standard_tags
 from config import stack, product_name, xray_enabled
@@ -56,11 +54,11 @@ api_role = aws.iam.Role(
                                     "logs:CreateLogStream",
                                     "logs:PutLogEvents",
                                 ],
-                                "Resource": ["*"],
+                                "Resource": "arn:aws:logs:*:*:*",
                             },
                             {
                                 "Effect": "Allow",
-                                "Action": ["lambda:*"],
+                                "Action": ["lambda:InvokeFunction"],
                                 "Resource": [
                                     args["get_emails_list_function"],
                                     args["get_email_function"],
@@ -192,7 +190,6 @@ api_emails_resource = aws.apigateway.Resource(
     path_part="{addressId}",
     rest_api=api.id,
 )
-# DELETE
 api_addresses_delete_method = aws.apigateway.Method(
     f"{product_name}_api_addresses_delete_method",
     http_method="DELETE",

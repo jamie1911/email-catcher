@@ -1,9 +1,7 @@
 import json
-import sys
 import pulumi
 import pulumi_aws as aws
 
-sys.path.insert(0, "../../../../")
 
 from shared.aws.tagging import register_standard_tags
 from config import (
@@ -156,7 +154,7 @@ store_email_function_role = aws.iam.Role(
             policy=pulumi.Output.all(
                 emails_table_arn=emails_table.arn,
                 address_table_arn=addresses_table.arn,
-                email_bucket=email_bucket.arn
+                email_bucket=email_bucket.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -205,7 +203,7 @@ store_email_function = aws.lambda_.Function(
             "emails_table_name": emails_table.name,
         }
     ),
-    timeout=120,
+    timeout=60,
     layers=[lambda_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")

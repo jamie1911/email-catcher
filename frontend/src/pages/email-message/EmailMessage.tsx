@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
     Badge, Card, Flex, Heading, View, Button, Text, Divider
 } from "@aws-amplify/ui-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, del } from 'aws-amplify/api';
 import PostalMime from 'postal-mime';
+import DOMPurify from 'dompurify';
 
 const EmailMessages = () => {
     const [message, setMessage] = useState<any>(null)
@@ -12,12 +13,17 @@ const EmailMessages = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<unknown>(null);
     const params = useParams();
+    const iframeRef = useRef(null);
     const emailAddress = params.addressId;
     const messageId = params.messageId;
     const navigate = useNavigate();
     const handleBackClick = (emailAddress) => {
         navigate(`/email-accounts/${encodeURIComponent(emailAddress)}`);
     };
+    const cleanHTML = (incoming_html) => {
+        return DOMPurify.sanitize(incoming_html)
+    };
+
 
     async function getMessage(emailAddress, messageId) {
         try {
@@ -59,8 +65,28 @@ const EmailMessages = () => {
     }
 
     useEffect(() => {
+
         getMessage(emailAddress, messageId); // Call the function to fetch addresses
     }, []);
+
+    const resizeIframe = () => {
+        const iframe = iframeRef.current;
+        iframe.style.width = '100%';
+        iframe.style.border = 'none';
+        iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
+    };
+
+    useEffect(() => {
+        if (iframeRef.current && message?.html) {
+            const cleanHTMLContent = cleanHTML(message.html);
+            const doc = iframeRef.current.contentDocument;
+            doc.open();
+            doc.write(cleanHTMLContent);
+            doc.close();
+            // Also call resize function directly in case onload is not triggered (for static content)
+            setTimeout(resizeIframe, 500);
+        }
+    }, [message]);
 
     if (loading) return <div>Loading...</div>;
     if (error) return <div>Error fetching message</div>;
@@ -114,7 +140,11 @@ const EmailMessages = () => {
                             Subject: {message.subject}
                         </Heading>
                         <Divider />
-                        <div className="email-content" dangerouslySetInnerHTML={{ __html: message.html }} />
+                        <iframe
+                            ref={iframeRef}
+                            title="Email Content"
+                            sandbox="allow-same-origin"
+                        />
                     </Flex>
                 </Card>
             </View>

@@ -65,7 +65,6 @@ const EmailMessages = () => {
     }
 
     useEffect(() => {
-
         getMessage(emailAddress, messageId); // Call the function to fetch addresses
     }, []);
 
@@ -73,19 +72,31 @@ const EmailMessages = () => {
         const iframe = iframeRef.current;
         iframe.style.width = '100%';
         iframe.style.border = 'none';
+        iframe.style.height = '0px'
         iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
     };
 
     useEffect(() => {
-        if (iframeRef.current && message?.html) {
+        if (message?.html) {
             const cleanHTMLContent = cleanHTML(message.html);
             const doc = iframeRef.current.contentDocument;
             doc.open();
             doc.write(cleanHTMLContent);
-            doc.close();
-            // Also call resize function directly in case onload is not triggered (for static content)
-            setTimeout(resizeIframe, 500);
+            doc.close()
+            resizeIframe();
+            iframeRef.current.addEventListener('load', resizeIframe);
         }
+
+        // Add resize event listener
+        window.addEventListener('resize', resizeIframe);
+
+        // Cleanup event listener on component unmount
+        return () => {
+            window.removeEventListener('resize', resizeIframe);
+            if (iframeRef.current) {
+                iframeRef.current.removeEventListener('load', resizeIframe);
+            }
+        };
     }, [message]);
 
     if (loading) return <div>Loading...</div>;
@@ -96,7 +107,7 @@ const EmailMessages = () => {
         <>
             <Flex className="header-flex">
                 <div className="email-header">
-                    <h2>Email Message: {messageId}</h2>
+                    <h2>Email Message ID: {messageId}</h2>
                 </div>
             </Flex>
             <Flex justifyContent="flex-start" alignItems="center">
@@ -124,7 +135,6 @@ const EmailMessages = () => {
                 borderRadius="6px"
                 maxWidth="100%"
                 padding="1rem"
-                minHeight="80vh"
             >
                 <Card>
                     <Flex
@@ -133,9 +143,13 @@ const EmailMessages = () => {
                         <Badge size="small" variation="info">
                             From: {message.from.address}
                         </Badge>
-                        <Badge size="small" variation="success">
-                            To: {message.to[0].address}
-                        </Badge>
+                        <Flex direction="row" alignItems="center" wrap="wrap">
+                            {message.to.map((recipient, index) => (
+                                <Badge key={index} size="small" variation="success">
+                                    To: {recipient.address}
+                                </Badge>
+                            ))}
+                        </Flex>
                         <Heading level={5}>
                             Subject: {message.subject}
                         </Heading>

@@ -113,7 +113,8 @@ const EmailAccounts = () => {
         borderRadius="6px"
         maxWidth="100%"
         padding="1rem"
-        minHeight="80vh"
+        minHeight="50vh"
+
       >
         <ScrollView width="100%">
           <Table highlightOnHover={true} size="small">

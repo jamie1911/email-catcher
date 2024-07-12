@@ -114,14 +114,14 @@ const EmailMessages = () => {
                 borderRadius="6px"
                 maxWidth="100%"
                 padding="1rem"
-                minHeight="80vh"
+                minHeight="50vh"
+
             ><br></br>
                 <ScrollView>
                     <Table size="small" highlightOnHover={true} className="responsive-table">
                         <TableHead>
                             <TableRow>
                                 <TableCell>From</TableCell>
-                                <TableCell>To</TableCell>
                                 <TableCell>Subject</TableCell>
                                 <TableCell>Date</TableCell>
                                 <TableCell>Action</TableCell>
@@ -131,8 +131,7 @@ const EmailMessages = () => {
                             {messages.map((item, index) => {
                                 return (
                                     <TableRow onClick={() => handleMessageClick(emailAddress, item.messageId)} key={index}>
-                                        <TableCell className="responsive-cell" data-label="From">{item.isNew && <FiMail />}&nbsp;{item.source}</TableCell>
-                                        <TableCell className="responsive-cell" data-label="To">{item.commonHeaders.to.join(', ')}</TableCell>
+                                        <TableCell className="responsive-cell" data-label="From">{item.isNew && <FiMail />}&nbsp;{item.commonHeaders.sender || item.commonHeaders.returnPath}</TableCell>
                                         <TableCell className="responsive-cell" data-label="Subject">{item.commonHeaders.subject}</TableCell>
                                         <TableCell className="responsive-cell" data-label="Date">{moment(item.commonHeaders.date).calendar()}</TableCell>
                                         <TableCell className="responsive-cell" data-label="Action">

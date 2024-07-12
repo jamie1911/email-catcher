@@ -51,20 +51,18 @@ Amplify.configure({
 export default function App() {
   return (
     <ThemeProvider theme={theme}>
-      <div>
-        {/* Routes nest inside one another. Nested route paths build upon
+      {/* Routes nest inside one another. Nested route paths build upon
             parent route paths, and nested route elements render inside
             parent route elements. See the note about <Outlet> below. */}
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<EmailAccounts />} />
-            <Route path="email-accounts" element={<EmailAccounts />} />
-            <Route path="email-accounts/:addressId" element={<EmailMessages />} />
-            <Route path="email-accounts/:addressId/:messageId" element={<EmailMessage />} />
-            <Route path="*" element={<NoMatch />} />
-          </Route>
-        </Routes>
-      </div>
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<EmailAccounts />} />
+          <Route path="email-accounts" element={<EmailAccounts />} />
+          <Route path="email-accounts/:addressId" element={<EmailMessages />} />
+          <Route path="email-accounts/:addressId/:messageId" element={<EmailMessage />} />
+          <Route path="*" element={<NoMatch />} />
+        </Route>
+      </Routes>
     </ThemeProvider>
   );
 }

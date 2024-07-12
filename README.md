@@ -39,9 +39,9 @@ When you login and view your addresses, you can go into one of the addresses. On
 ## Configuration
 * Update PULUMI_ORG = `"PULUMI_ORG"` in deploy.py to match your pulumi organization name
 * Update PULUMI_PROJECT_NAME = `"PULUMI_PROJECT_NAME"` in deploy.py to your desired pulumi project name
-* Assumes a route53 zone exists already, update `cloudfront_route35_zone_id` in config.py with the zone identifier
+* Assumes a route53 zone exists already, update `route35_cloudfront_route35_zone_id` in config.py with the zone identifier
 * Assumes you already have a SES rule set defined for your domain, update `ses_domain_rule_set_name` in config.py with the name of the rule set
-* Update `email_domain` in config.py with the domain you wish to receive emails on
+* Update `ses_email_domain` in config.py with the domain you wish to receive emails on
 * Update `cloudfront_domain` in config.py with the domain for the web interface
 * If you want to use the summary feature, your account must be allowed to use the Amazon Titan Model `amazon.titan-text-lite-v1`
 * install/have npm locally to allow deploy.py to build and deploy the front end
@@ -58,3 +58,7 @@ When you login and view your addresses, you can go into one of the addresses. On
 ![View Emails](photo2.jpg "View emails")
 * View a selected email
 ![View Selected Email](photo3.jpg "View selected email")
+
+## Links
+
+* Based on: https://www.vittorionardone.it/en/2020/01/10/your-disposable-emails-on-aws/

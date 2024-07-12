@@ -1,4 +1,12 @@
+import inspect
 import pulumi
+
+
+def get_caller_file():
+    # Get the previous frame in the stack, that is, the caller of the function
+    frame = inspect.stack()[2]
+    module = inspect.getmodule(frame[0])
+    return module.__file__ if module else None
 
 
 # registerAutoTags registers a global stack transformation that merges a set
@@ -10,10 +18,11 @@ def register_auto_tags(auto_tags):
 def register_standard_tags(environment="no-environment"):
     register_auto_tags(
         {
+            "environment": environment,
             "pulumi-project": pulumi.get_project(),
             "pulumi-stack": pulumi.get_stack(),
             "iac-system": "pulumi",
-            "environment": environment,
+            "iac-filepath": get_caller_file(),
         }
     )
 

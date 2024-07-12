@@ -1,6 +1,0 @@
-name: __PULUMI_PROJECT_NAME__
-runtime:
-  name: python
-  options:
-    virtualenv: venv
-description: __PULUMI_PROJECT_DESC__

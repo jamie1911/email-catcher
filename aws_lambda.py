@@ -1,33 +1,42 @@
 import json
 import pulumi
 import pulumi_aws as aws
-
-
 from shared.aws.tagging import register_standard_tags
+
 from config import (
     stack,
     aws_account_id,
     product_name,
-    email_domain,
+    ses_email_domain,
     log_level,
     xray_enabled,
 )
-from dynamodb import addresses_table, emails_table
-from s3 import email_bucket
+from dynamodb import table_addresses, table_emails
+from s3 import bucket_emails
 
 register_standard_tags(environment=stack)
 
-lambda_layer = aws.lambda_.LayerVersion(
-    f"{product_name}_lambda_code_layer",
-    compatible_runtimes=["python3.10"],
+local_name = f"{product_name}_lambda"
+LAMBDA_TIMEOUT = 120
+LAMBDA_PYTHON_VERSION = "python3.12"
+
+lambda_code_layer = aws.lambda_.LayerVersion(
+    f"{local_name}_code_layer",
+    compatible_runtimes=[LAMBDA_PYTHON_VERSION],
     code=pulumi.FileArchive("./code_layer"),
     skip_destroy=False,
     layer_name=f"{product_name}_lambda_code_layer",
 )
 local_archive = pulumi.FileArchive("./lambda")
 
-incoming_mail_check_function_role = aws.iam.Role(
-    f"{product_name}_incoming_mail_check_function_role",
+lambda_cloudwatch_log_group = aws.cloudwatch.LogGroup(
+    f"{local_name}_cloudwatch_log_group",
+    retention_in_days=7,
+    skip_destroy=False
+)
+
+lambda_incoming_email_check_role = aws.iam.Role(
+    f"{local_name}_incoming_email_check_role",
     assume_role_policy=json.dumps(
         {
             "Version": "2012-10-17",
@@ -62,8 +71,8 @@ incoming_mail_check_function_role = aws.iam.Role(
             ),
         ),
         aws.iam.RoleInlinePolicyArgs(
-            name="dynamodb_policy",
-            policy=pulumi.Output.all(addresses_table_arn=addresses_table.arn).apply(
+            name="access_policy",
+            policy=pulumi.Output.all(addresses_table_arn=table_addresses.arn).apply(
                 lambda args: json.dumps(
                     {
                         "Version": "2012-10-17",
@@ -81,41 +90,48 @@ incoming_mail_check_function_role = aws.iam.Role(
     ],
 )
 
-incoming_mail_check_function = aws.lambda_.Function(
-    f"{product_name}_incoming_mail_check_function",
-    runtime="python3.10",
-    description="Invoked by SES to check if mail address exists.",
-    handler="incoming_mail_check_function.lambda_handler",
-    role=incoming_mail_check_function_role.arn,
+lambda_incoming_email_check = aws.lambda_.Function(
+    f"{local_name}_incoming_email_check",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Invoked by SES to check if email address exists.",
+    handler="incoming_email_check_function.lambda_handler",
+    role=lambda_incoming_email_check_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "addresses_table_name": addresses_table.name,
-            "emails_table_name": emails_table.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
+            "EMAILS_TABLE_NAME": table_emails.name,
         }
     ),
-    timeout=30,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )
 
 aws.lambda_.Permission(
-    f"{product_name}_incoming_mail_check_function_permission",
+    f"{local_name}_incoming_email_check_permission",
     action="lambda:InvokeFunction",
-    function=incoming_mail_check_function.arn,
+    function=lambda_incoming_email_check.arn,
     principal="ses.amazonaws.com",
     source_account=aws_account_id,
 )
 
-store_email_function_role = aws.iam.Role(
-    f"{product_name}_store_email_function_role",
+lambda_store_email_role = aws.iam.Role(
+    f"{local_name}_store_email_role",
     assume_role_policy=json.dumps(
         {
             "Version": "2012-10-17",
@@ -152,9 +168,9 @@ store_email_function_role = aws.iam.Role(
         aws.iam.RoleInlinePolicyArgs(
             name="access_policy",
             policy=pulumi.Output.all(
-                emails_table_arn=emails_table.arn,
-                address_table_arn=addresses_table.arn,
-                email_bucket=email_bucket.arn,
+                emails_table_arn=table_emails.arn,
+                address_table_arn=table_addresses.arn,
+                email_bucket_arn=bucket_emails.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -173,7 +189,7 @@ store_email_function_role = aws.iam.Role(
                             {
                                 "Effect": "Allow",
                                 "Action": "s3:GetObject",
-                                "Resource": f"{args['email_bucket']}/*",
+                                "Resource": f"{args['email_bucket_arn']}/*",
                             },
                             {
                                 "Effect": "Allow",
@@ -188,47 +204,56 @@ store_email_function_role = aws.iam.Role(
     ],
 )
 
-store_email_function = aws.lambda_.Function(
-    f"{product_name}_store_email_function",
-    runtime="python3.10",
-    description="Incoming mail topic subscriber to store emails in db.",
+lambda_store_email = aws.lambda_.Function(
+    f"{local_name}_store_email",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Incoming email topic subscriber to store emails and s3 object locations in db",
     handler="store_email_function.lambda_handler",
-    role=store_email_function_role.arn,
+    role=lambda_store_email_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "addresses_table_name": addresses_table.name,
-            "emails_table_name": emails_table.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
+            "EMAILS_TABLE_NAME": table_emails.name,
         }
     ),
-    timeout=60,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )
 
-incoming_mail_topic = aws.sns.Topic(
-    f"{product_name}_incoming_mail_topic",
-    display_name="Disposable incoming mail topic",
+lambda_sns_incoming_email_topic = aws.sns.Topic(
+    f"{local_name}_sns_incoming_email_topic",
+    display_name="Store Successful Incoming Email Topic",
     tracing_config="Active" if xray_enabled.lower() == "true" else None,
 )
-incoming_mail_topic_subscription = aws.sns.TopicSubscription(
-    f"{product_name}_incoming_mail_topic_subscription",
-    topic=incoming_mail_topic.arn,
+lambda_sns_incoming_mail_topic_subscription = aws.sns.TopicSubscription(
+    f"{local_name}_sns_incoming_mail_topic_subscription",
+    topic=lambda_sns_incoming_email_topic.arn,
     protocol="lambda",
-    endpoint=store_email_function.arn,
+    endpoint=lambda_store_email.arn,
 )
 
-incoming_mail_topic_policy = aws.sns.TopicPolicy(
-    f"{product_name}_incoming_mail_topic_policy",
-    arn=incoming_mail_topic.arn,
-    policy=pulumi.Output.all(incoming_mail_topic_arn=incoming_mail_topic.arn).apply(
+lambda_sns_incoming_mail_topic_policy = aws.sns.TopicPolicy(
+    f"{local_name}_sns_incoming_mail_topic_policy",
+    arn=lambda_sns_incoming_email_topic.arn,
+    policy=pulumi.Output.all(
+        incoming_mail_topic_arn=lambda_sns_incoming_email_topic.arn
+    ).apply(
         lambda args: json.dumps(
             {
                 "Version": "2012-10-17",
@@ -251,15 +276,16 @@ incoming_mail_topic_policy = aws.sns.TopicPolicy(
 )
 
 aws.lambda_.Permission(
-    f"{product_name}_store_email_function_permission",
+    f"{local_name}_sns_store_email_permission",
     action="lambda:InvokeFunction",
-    function=store_email_function.arn,
+    function=lambda_store_email.arn,
     principal="sns.amazonaws.com",
-    source_arn=incoming_mail_topic.arn,
+    source_arn=lambda_sns_incoming_email_topic.arn,
 )
 
-create_email_function_role = aws.iam.Role(
-    f"{product_name}_create_email_function_role",
+
+lambda_addresses_emails_role = aws.iam.Role(
+    f"{local_name}_addresses_emails_role",
     assume_role_policy=json.dumps(
         {
             "Version": "2012-10-17",
@@ -294,65 +320,10 @@ create_email_function_role = aws.iam.Role(
             ),
         ),
         aws.iam.RoleInlinePolicyArgs(
-            name="address_table_policy",
-            policy=pulumi.Output.all(address_table_arn=addresses_table.arn).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": ["dynamodb:PutItem", "dynamodb:GetItem"],
-                                "Resource": args["address_table_arn"],
-                            },
-                        ],
-                    }
-                )
-            ),
-        ),
-    ],
-)
-
-get_emails_list_function_role = aws.iam.Role(
-    f"{product_name}_get_emails_list_function_role",
-    assume_role_policy=json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Principal": {"Service": "lambda.amazonaws.com"},
-                    "Action": "sts:AssumeRole",
-                }
-            ],
-        }
-    ),
-    managed_policy_arns=[aws.iam.ManagedPolicy.AWSX_RAY_DAEMON_WRITE_ACCESS],
-    inline_policies=[
-        aws.iam.RoleInlinePolicyArgs(
-            name="cloudwatch_logs_policy",
-            policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "logs:CreateLogGroup",
-                                "logs:CreateLogStream",
-                                "logs:PutLogEvents",
-                            ],
-                            "Resource": "arn:aws:logs:*:*:*",
-                        }
-                    ],
-                }
-            ),
-        ),
-        aws.iam.RoleInlinePolicyArgs(
-            name="EmailsTables",
+            name="access_policy",
             policy=pulumi.Output.all(
-                emails_table_arn=emails_table.arn,
-                addresses_table_arn=addresses_table.arn,
+                emails_table_arn=table_emails.arn,
+                addresses_table_arn=table_addresses.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -378,82 +349,103 @@ get_emails_list_function_role = aws.iam.Role(
     ],
 )
 
-get_emails_list_function = aws.lambda_.Function(
-    f"{product_name}_get_emails_list_function",
-    runtime="python3.10",
-    description="Get list of emails for a specific address.",
+lambda_get_emails = aws.lambda_.Function(
+    f"{local_name}_get_emails",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Gets the list of emails for a specific address",
     handler="get_emails_list_function.lambda_handler",
-    role=get_emails_list_function_role.arn,
+    role=lambda_addresses_emails_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "emails_table_name": emails_table.name,
-            "addresses_table_name": addresses_table.name,
+            "EMAILS_TABLE_NAME": table_emails.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
         }
     ),
-    timeout=30,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )
 
-get_addresses_function = aws.lambda_.Function(
-    f"{product_name}_get_addresses_function",
-    runtime="python3.10",
-    description="Get list of emails address for a specific user.",
+lambda_get_addresses = aws.lambda_.Function(
+    f"{local_name}_get_addresses",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Gets the list of email addresses for a specific user",
     handler="get_addresses_function.lambda_handler",
-    role=get_emails_list_function_role.arn,
+    role=lambda_addresses_emails_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "addresses_table_name": addresses_table.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
         }
     ),
-    timeout=30,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )
 
-post_addresses_function = aws.lambda_.Function(
-    f"{product_name}_post_addresses_function",
-    runtime="python3.10",
-    description="Create email address for a specific user.",
+lambda_post_addresses = aws.lambda_.Function(
+    f"{local_name}_post_addresses",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Create email address for a specific user",
     handler="post_addresses_function.lambda_handler",
-    role=get_emails_list_function_role.arn,
+    role=lambda_addresses_emails_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "addresses_table_name": addresses_table.name,
-            "email_domain": email_domain,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
+            "EMAIL_DOMAIN": ses_email_domain,
         }
     ),
-    timeout=30,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )
 
-delete_address_function_role = aws.iam.Role(
-    f"{product_name}_delete_address_function_role",
+lambda_delete_address_email_role = aws.iam.Role(
+    f"{local_name}_delete_address_email_role",
     assume_role_policy=json.dumps(
         {
             "Version": "2012-10-17",
@@ -488,10 +480,11 @@ delete_address_function_role = aws.iam.Role(
             ),
         ),
         aws.iam.RoleInlinePolicyArgs(
-            name="EmailsTableGetDeleteItem",
+            name="access_policy",
             policy=pulumi.Output.all(
-                emails_table_arn=emails_table.arn,
-                addresses_table_arn=addresses_table.arn,
+                emails_table_arn=table_emails.arn,
+                addresses_table_arn=table_addresses.arn,
+                incoming_mail_bucket_arn=bucket_emails.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -509,24 +502,12 @@ delete_address_function_role = aws.iam.Role(
                                     args["emails_table_arn"],
                                     args["addresses_table_arn"],
                                 ],
-                            }
-                        ],
-                    }
-                )
-            ),
-        ),
-        aws.iam.RoleInlinePolicyArgs(
-            name="MailBucketDeleteObject",
-            policy=pulumi.Output.all(incoming_mail_bucket_arn=email_bucket.arn).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
+                            },
                             {
                                 "Effect": "Allow",
                                 "Action": "s3:DeleteObject",
                                 "Resource": f"{args['incoming_mail_bucket_arn']}/*",
-                            }
+                            },
                         ],
                     }
                 )
@@ -534,33 +515,73 @@ delete_address_function_role = aws.iam.Role(
         ),
     ],
 )
-delete_address_function = aws.lambda_.Function(
-    f"{product_name}_delete_address_function",
-    runtime="python3.10",
-    description="Delete mailbox",
+
+lambda_delete_address = aws.lambda_.Function(
+    f"{local_name}_delete_address",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Delete email address for a specific user",
     handler="delete_address_function.lambda_handler",
-    role=delete_address_function_role.arn,
+    role=lambda_delete_address_email_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "emails_table_name": emails_table.name,
-            "addresses_table_name": addresses_table.name,
+            "EMAILS_TABLE_NAME": table_emails.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
         }
     ),
-    timeout=120,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )
 
-get_email_function_role = aws.iam.Role(
-    f"{product_name}_get_email_function_role",
+lambda_delete_email_item = aws.lambda_.Function(
+    f"{local_name}_delete_email_item",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Delete email item from an address for a specific user",
+    handler="delete_email_item_function.lambda_handler",
+    role=lambda_delete_address_email_role.arn,
+    environment=aws.lambda_.FunctionEnvironmentArgs(
+        variables={
+            "LOG_LEVEL": log_level,
+            "XRAY_ENABLED": xray_enabled,
+            "XRAY_NAME": product_name,
+            "EMAILS_TABLE_NAME": table_emails.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
+        }
+    ),
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
+    tracing_config=(
+        aws.lambda_.FunctionTracingConfigArgs(mode="Active")
+        if xray_enabled.lower() == "true"
+        else None
+    ),
+    code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
+)
+
+lambda_get_email_role = aws.iam.Role(
+    f"{local_name}_get_email_role",
     assume_role_policy=json.dumps(
         {
             "Version": "2012-10-17",
@@ -595,10 +616,11 @@ get_email_function_role = aws.iam.Role(
             ),
         ),
         aws.iam.RoleInlinePolicyArgs(
-            name="EmailsTableGetUpdateItem",
+            name="access_policy",
             policy=pulumi.Output.all(
-                addresses_table_arn=addresses_table.arn,
-                emails_table_arn=emails_table.arn,
+                addresses_table_arn=table_addresses.arn,
+                emails_table_arn=table_emails.arn,
+                email_bucket_arn=bucket_emails.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -612,76 +634,47 @@ get_email_function_role = aws.iam.Role(
                                     args["addresses_table_arn"],
                                 ],
                             },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:GetObject",
+                                "Resource": f"{args['email_bucket_arn']}/*",
+                            },
                         ],
                     }
                 )
             ),
         ),
-        aws.iam.RoleInlinePolicyArgs(
-            name="MailBucketGetObject",
-            policy=pulumi.Output.all(email_bucket=email_bucket.arn).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": "s3:GetObject",
-                                "Resource": f"{args['email_bucket']}/*",
-                            }
-                        ],
-                    }
-                ),
-            ),
-        ),
     ],
 )
-get_email_function = aws.lambda_.Function(
-    f"{product_name}_get_email_function",
-    runtime="python3.10",
-    description="Get contents of a specific messageId.",
-    handler="get_email_function.lambda_handler",
-    role=get_email_function_role.arn,
-    environment=aws.lambda_.FunctionEnvironmentArgs(
-        variables={
-            "LOG_LEVEL": log_level,
-            "XRAY_ENABLED": xray_enabled,
-            "XRAY_NAME": product_name,
-            "emails_table_name": emails_table.name,
-            "addresses_table_name": addresses_table.name,
-        }
-    ),
-    timeout=60,
-    layers=[lambda_layer.arn],
-    tracing_config=(
-        aws.lambda_.FunctionTracingConfigArgs(mode="Active")
-        if xray_enabled.lower() == "true"
-        else None
-    ),
-    code=local_archive,
-)
 
-delete_email_item_function = aws.lambda_.Function(
-    f"{product_name}_delete_email_item_function",
-    runtime="python3.10",
-    description="Delete email item function",
-    handler="delete_email_item_function.lambda_handler",
-    role=delete_address_function_role.arn,
+lambda_get_email = aws.lambda_.Function(
+    f"{local_name}_get_email",
+    runtime=LAMBDA_PYTHON_VERSION,
+    description="Get contents of a specific email for a user",
+    handler="get_email_function.lambda_handler",
+    role=lambda_get_email_role.arn,
     environment=aws.lambda_.FunctionEnvironmentArgs(
         variables={
             "LOG_LEVEL": log_level,
             "XRAY_ENABLED": xray_enabled,
             "XRAY_NAME": product_name,
-            "emails_table_name": emails_table.name,
-            "addresses_table_name": addresses_table.name,
+            "EMAILS_TABLE_NAME": table_emails.name,
+            "ADDRESS_TABLE_NAME": table_addresses.name,
         }
     ),
-    timeout=30,
-    layers=[lambda_layer.arn],
+    timeout=LAMBDA_TIMEOUT,
+    layers=[lambda_code_layer.arn],
     tracing_config=(
         aws.lambda_.FunctionTracingConfigArgs(mode="Active")
         if xray_enabled.lower() == "true"
         else None
     ),
     code=local_archive,
+    logging_config=aws.lambda_.FunctionLoggingConfigArgs(
+        log_format="JSON",
+        application_log_level=log_level,
+        system_log_level=log_level,
+        log_group=lambda_cloudwatch_log_group.name,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[lambda_cloudwatch_log_group]),
 )

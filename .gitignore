@@ -163,3 +163,4 @@ yarn-error.log*
 package-lock.json
 
 code_layer/*
+Pulumi*.yaml

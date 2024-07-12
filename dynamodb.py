@@ -1,17 +1,15 @@
-import sys
 import pulumi_aws as aws
-
-sys.path.insert(0, "../../../../")
-
 from shared.aws.tagging import register_standard_tags
+
 from config import stack, product_name
 
 register_standard_tags(environment=stack)
 
+local_name = f"{product_name}_ddb"
+
 # AddressesTable
-addresses_table = aws.dynamodb.Table(
-    f"{product_name}_addresses_table",
-    name=f"{product_name}_addresses",
+table_addresses = aws.dynamodb.Table(
+    f"{local_name}_table_addresses",
     attributes=[
         aws.dynamodb.TableAttributeArgs(name="address", type="S"),
         aws.dynamodb.TableAttributeArgs(name="user_sub", type="S"),
@@ -28,9 +26,8 @@ addresses_table = aws.dynamodb.Table(
 )
 
 # EmailsTable
-emails_table = aws.dynamodb.Table(
-    f"{product_name}_emails_table",
-    name=f"{product_name}_emails",
+table_emails = aws.dynamodb.Table(
+    f"{local_name}_table_emails",
     billing_mode="PAY_PER_REQUEST",
     attributes=[
         aws.dynamodb.TableAttributeArgs(name="destination", type="S"),

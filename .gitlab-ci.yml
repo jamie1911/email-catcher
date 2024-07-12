@@ -11,13 +11,14 @@ cache:
     - .pulumi/plugins
 
 stages:
-  - test
-  - update
+  - frontend_changes
+  - branch_env
+  - pulumi_deploy
 
 before_script:
   - apt-get update
   - apt-get install -y jq
-  - pip install awscli pulumi
+  - pip install awscli
   - aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
   - aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
   - aws configure set region "${AWS_REGION:-us-east-2}"
@@ -26,12 +27,11 @@ before_script:
   - export AWS_SECRET_ACCESS_KEY=$(echo "${CREDS_JSON}" | jq ".Credentials.SecretAccessKey" --raw-output)
   - export AWS_SESSION_TOKEN=$(echo "${CREDS_JSON}"     | jq ".Credentials.SessionToken" --raw-output)
 
-set_variable_on_change:
-  tags:
-  stage: test
+Detect Frontend Changes:
+  stage: frontend_changes
   rules:
     - changes:
-        - frontend/**/*
+      - "frontend/**/*"
   before_script:
     - echo "Checking for changes in frontend"
   script:
@@ -40,25 +40,55 @@ set_variable_on_change:
     reports:
       dotenv: deploy.env
 
-Pulumi AWS EMAIL-CATCHER Preview:
+Deploy Branch Environment:
+  stage: branch_env
+  needs:
+    - job: Detect Frontend Changes
+      optional: true
+  environment:
+    name: $CI_COMMIT_REF_SLUG
+    on_stop: Remove Branch Environment
+  rules:
+    - if: $CI_MERGE_REQUEST_ID && $CI_COMMIT_REF_SLUG != "main" && $CI_MERGE_REQUEST_TITLE =~ /create-branch-stack/
+  script:
+    - pip install -r pulumi_deploy_requirements.txt
+    - python -u pulumi_deploy.py --stack-name ${CI_COMMIT_REF_SLUG:0:8} --command up
+  resource_group: ${CI_COMMIT_REF_SLUG}-deploy
+
+Remove Branch Environment:
+  stage: branch_env
+  allow_failure: true
+  environment:
+    name: $CI_COMMIT_REF_SLUG
+    action: stop
+  rules:
+    - if: $CI_MERGE_REQUEST_ID && $CI_COMMIT_REF_SLUG != "main" && $CI_MERGE_REQUEST_TITLE =~ /create-branch-stack/
+      when: manual
+  script:
+    - pip install -r pulumi_deploy_requirements.txt
+    - python -u pulumi_deploy.py --stack-name ${CI_COMMIT_REF_SLUG:0:8} --command destroy --force
+  resource_group: ${CI_COMMIT_REF_SLUG}-destroy
+
+Pulumi AWS EMAIL-CATCHER Production Preview:
   interruptible: true
   needs:
-    - job: set_variable_on_change
+    - job: Detect Frontend Changes
       optional: true
-  stage: update
+  stage: pulumi_deploy
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   script:
-    
+    - pip install -r pulumi_deploy_requirements.txt
     - python -u pulumi_deploy.py --stack-name prod --command preview
 
-Pulumi AWS EMAIL-CATCHER Update:
+Pulumi AWS EMAIL-CATCHER Production Deploy:
   resource_group: $CI_JOB_NAME
   needs:
-    - job: set_variable_on_change
+    - job: Detect Frontend Changes
       optional: true
-  stage: update
+  stage: pulumi_deploy
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - pip install -r pulumi_deploy_requirements.txt
     - python -u pulumi_deploy.py --stack-name prod --command up

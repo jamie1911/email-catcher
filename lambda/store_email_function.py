@@ -22,7 +22,7 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-brt = boto3.client(
+brk_client = boto3.client(
     service_name="bedrock-runtime",
     config=Config(
         region_name="us-east-1",
@@ -30,14 +30,14 @@ brt = boto3.client(
 )
 s3 = boto3.client("s3")
 
-dynamodb = boto3.resource("dynamodb")
-email_table = dynamodb.Table(os.environ["emails_table_name"])
-address_table = dynamodb.Table(os.environ["addresses_table_name"])
+ddb_client = boto3.resource("dynamodb")
+email_table = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
+address_table = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
 
 
 def summarize(text: str):
-    logger.info(f"summarizing text via bedrock-runtime: {text}")
-    logger.info(f"Bedrock estimated Tokens Usage: {(len(text)/6)}")
+    logger.debug("## Summarizing text via bedrock-runtime: %s", text)
+    logger.info("## Bedrock estimated Tokens Usage: %s", (len(text) / 6))
     prompt = f"""
 Please provide a summary of the following email content. Do not add any information that is not mentioned in the text below.
 
@@ -62,23 +62,23 @@ Please provide a summary of the following email content. Do not add any informat
         accept = "application/json"
         contentType = "application/json"
 
-        response = brt.invoke_model(
+        response = brk_client.invoke_model(
             body=body, modelId=modelId, accept=accept, contentType=contentType
         )
-        logger.info("## Loading response to json ##")
+        logger.debug("## Loading bedrock response to json ##")
         response_body = json.loads(response.get("body").read())
-        logger.info("## Bedrock client response ##")
-        logger.info(response_body["results"][0]["outputText"])
+        logger.debug("## Bedrock client response ##")
+        logger.debug(response_body["results"][0]["outputText"])
         return response_body["results"][0]["outputText"]
     except Exception as e:
         logger.error("## Bedrock Invoke Model Error ##")
-        logger.error(e)
+        logger.exception(e)
         return None
 
 
 def set_summary(destination, messageId, summary):
     logger.info(
-        f"Setting summary for destination: {destination} and messageId: {messageId}"
+        f"## Setting summary for destination: {destination} and messageId: {messageId}"
     )
     try:
         email_table.update_item(
@@ -88,15 +88,15 @@ def set_summary(destination, messageId, summary):
         )
     except ClientError as e:
         logger.error(
-            f"Error setting summary for destination: {destination} and messageId: {messageId}"
+            f"## Error setting summary for destination: {destination} and messageId: {messageId}"
         )
         logger.error("## DynamoDB Client Exception")
         logger.error(e.response["Error"]["Message"])
     except Exception as e:
         logger.error(
-            f"Error setting summary for destination: {destination} and messageId: {messageId}"
+            f"## Error setting summary for destination: {destination} and messageId: {messageId}"
         )
-        logger.error(e)
+        logger.exception(e)
 
 
 def store_email(email, receipt):
@@ -137,7 +137,7 @@ def lambda_handler(event, context):
             msg = BytesParser(policy=policy.default).parse(
                 io.BytesIO(email_content_bytes)
             )
-            email_body = msg.get_body(preferencelist=("plain")).get_content()
+            email_body = msg.get_body(preferencelist=("plain", "html")).get_content()
             pattern = r"<https?://[^>]*>"
             email_body = re.sub(pattern, "", email_body)
             summary = summarize(email_body)
@@ -145,4 +145,5 @@ def lambda_handler(event, context):
                 message["mail"]["destination"][0], message["mail"]["messageId"], summary
             )
         except Exception as e:
-            logger.error(f"Failed to parse email for AI summary: {e}")
+            logger.error("## Failed to parse email for AI summary:")
+            logger.exception(e)

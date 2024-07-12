@@ -18,16 +18,16 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-dynamodb = boto3.resource("dynamodb")
-addresses_table = dynamodb.Table(os.environ["addresses_table_name"])
-emails_table = dynamodb.Table(os.environ["emails_table_name"])
+ddb_client = boto3.resource("dynamodb")
+table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
+table_emails = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
 
 
 def get_emails(destination, user_sub):
     try:
-        if check_access(addresses_table, user_sub, destination):
+        if check_access(table_addresses, user_sub, destination):
             filtering_exp = Key("destination").eq(destination)
-            response = emails_table.query(KeyConditionExpression=filtering_exp)
+            response = table_emails.query(KeyConditionExpression=filtering_exp)
             items = response["Items"]
             sorted_items = sorted(items, key=lambda x: x["timestamp"], reverse=True)
             return sorted_items
@@ -51,4 +51,5 @@ def lambda_handler(event, context):
 
         return create_response(status_code=200, body=items)
     except Exception as e:
+        logger.exception(e)
         return create_response(status_code=500, body=e)

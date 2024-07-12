@@ -16,11 +16,11 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-dynamodb = boto3.resource("dynamodb")
+ddb_client = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
 
-addresses_table = dynamodb.Table(os.environ["addresses_table_name"])
-emails_table = dynamodb.Table(os.environ["emails_table_name"])
+table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
+table_emails = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
 
 
 def delete_object(bucket_name, object_name):
@@ -44,7 +44,7 @@ def delete_object(bucket_name, object_name):
 
 def delete_email_item(destination, messageId):
     try:
-        emails_table.delete_item(
+        table_emails.delete_item(
             Key={"destination": destination, "messageId": messageId}
         )
     except ClientError as e:
@@ -54,7 +54,7 @@ def delete_email_item(destination, messageId):
 
 def delete_address_item(address):
     try:
-        addresses_table.delete_item(Key={"address": address})
+        table_addresses.delete_item(Key={"address": address})
     except ClientError as e:
         logger.error("## DynamoDB Client Exception")
         logger.error(e.response["Error"]["Message"])
@@ -63,7 +63,7 @@ def delete_address_item(address):
 def find_emails(destination):
     try:
         filtering_exp = Key("destination").eq(destination)
-        response = emails_table.query(KeyConditionExpression=filtering_exp)
+        response = table_emails.query(KeyConditionExpression=filtering_exp)
     except ClientError as e:
         logger.error("## DynamoDB Client Exception")
         logger.error(e.response["Error"]["Message"])
@@ -80,17 +80,18 @@ def cleanup(address):
 
 
 def lambda_handler(event, context):
-    logger.info("## ENVIRONMENT VARIABLES")
+    logger.info("## ENVIRONMENT VARIABLES ")
     logger.info(os.environ)
     logger.info("## EVENT")
     logger.info(event)
     try:
         destination = event["pathParameters"]["addressId"]
         user_sub = get_user_sub_from_event(event)
-        logger.info("user_sub deleteing address: %s", user_sub)
-        if check_access(addresses_table, user_sub, destination):
+        logger.info("## user_sub deleteing address: %s", user_sub)
+        if check_access(table_addresses, user_sub, destination):
             cleanup(destination)
             return create_response(status_code=200, body=None)
     except Exception as e:
-        logger.error("exception deleting address: %s", e)
+        logger.error("## Error deleting address:")
+        logger.exception(e)
         return create_response(status_code=500, body=e)

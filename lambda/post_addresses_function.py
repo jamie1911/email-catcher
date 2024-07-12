@@ -18,14 +18,14 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-dynamodb = boto3.resource("dynamodb")
-addresses_table = dynamodb.Table(os.environ["addresses_table_name"])
-email_domain = os.environ["email_domain"]
+ddb_client = boto3.resource("dynamodb")
+table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
+ses_email_domain = os.environ["EMAIL_DOMAIN"]
 
 
 def address_exists(address: str):
     try:
-        response = addresses_table.get_item(Key={"address": address.lower()})
+        response = table_addresses.get_item(Key={"address": address.lower()})
         if "Item" in response:
             item = response["Item"]
             if item["address"]:
@@ -42,7 +42,7 @@ def address_exists(address: str):
 
 def create_address(address: str, user_sub: str, summarize_emails: bool = False):
     try:
-        addresses_table.put_item(
+        table_addresses.put_item(
             Item={
                 "address": address.lower(),
                 "user_sub": user_sub,
@@ -62,13 +62,13 @@ def validate_email(address):
         "^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,4})$", address
     )
     if match != None:
-        logger.info(f"{address} does not follow the email pattern")
+        logger.info(f"## {address} does not follow the email pattern")
         domain = address.split("@")[-1]
-        if domain == email_domain:
+        if domain == ses_email_domain:
             valid = True
-            logger.info(f"{address} is part of a valid email domain")
+            logger.info(f"## {address} is part of a valid email domain")
         else:
-            logger.info(f"{address} is not part of a valid domain")
+            logger.info(f"## {address} is not part of a valid domain")
     return valid
 
 
@@ -87,14 +87,15 @@ def lambda_handler(event, context):
         if validate_email(new_address):
             if address_exists(new_address):
                 message = "email address already exists, please use a different address"
-                logger.info(f"{new_address} already exists")
+                logger.warning(f"## {new_address} already exists")
                 return create_response(status_code=400, body=message)
             else:
-                logger.info(f"creating {new_address}")
+                logger.info(f"## Creating {new_address}")
                 create_address(new_address, user_sub, summarize_emails)
                 message = "email address created"
                 return create_response(status_code=201, body=message)
         else:
             return create_response(status_code=400, body="Invalid request data")
     except Exception as e:
+        logger.exception(e)
         return create_response(status_code=500, body=e)

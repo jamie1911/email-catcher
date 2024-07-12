@@ -17,17 +17,17 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-dynamodb = boto3.resource("dynamodb")
+ddb_client = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
 
-addresses_table = dynamodb.Table(os.environ["addresses_table_name"])
-emails_table = dynamodb.Table(os.environ["emails_table_name"])
+table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
+table_emails = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
 
 
 def get_email_item(destination, messageId):
     result = None
     try:
-        response = emails_table.get_item(
+        response = table_emails.get_item(
             Key={"destination": destination, "messageId": messageId}
         )
         if "Item" in response:
@@ -43,7 +43,7 @@ def get_email_item(destination, messageId):
 
 def delete_email_item(destination, messageId):
     try:
-        emails_table.delete_item(
+        table_emails.delete_item(
             Key={"destination": destination, "messageId": messageId}
         )
     except ClientError as e:
@@ -63,7 +63,7 @@ def lambda_handler(event, context):
         messageId = event["pathParameters"]["messageId"]
         user_sub = get_user_sub_from_event(event)
 
-        if check_access(addresses_table, user_sub, destination):
+        if check_access(table_addresses, user_sub, destination):
             email_file = get_email_item(destination, messageId)
             if email_file is not None:
                 s3.delete_object(
@@ -85,6 +85,7 @@ def lambda_handler(event, context):
                 body=None,
             )
     except Exception as e:
+        logger.exception(e)
         return create_response(
             status_code=500,
             body=e,

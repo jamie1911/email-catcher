@@ -36,9 +36,9 @@ def create_response(
     }
 
 
-def check_access(addresses_table, user_sub, destination, full_response=False):
+def check_access(table_addresses, user_sub, destination, full_response=False):
     try:
-        response = addresses_table.get_item(Key={"address": destination})
+        response = table_addresses.get_item(Key={"address": destination})
         item = response.get("Item", None)
 
         if item and item.get("user_sub") == user_sub:
@@ -49,13 +49,13 @@ def check_access(addresses_table, user_sub, destination, full_response=False):
             return (False, item) if full_response else False
     except Exception as e:
         logger.error("## DynamoDB Client Exception")
-        logger.error(e)
+        logger.exception(e)
         raise e
 
 
-def check_summarize(addresses_table, destination):
+def check_summarize(table_addresses, destination):
     try:
-        response = addresses_table.get_item(Key={"address": destination})
+        response = table_addresses.get_item(Key={"address": destination})
         item = response.get("Item", None)
         if item:
             summarize = item.get("summarize_emails", None)
@@ -69,7 +69,7 @@ def check_summarize(addresses_table, destination):
             return False
     except Exception as e:
         logger.error("## DynamoDB Client Exception")
-        logger.error(e)
+        logger.exception(e)
         raise e
 
 

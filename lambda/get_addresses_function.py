@@ -18,8 +18,8 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-dynamodb = boto3.resource("dynamodb")
-ddb_table = dynamodb.Table(os.environ["addresses_table_name"])
+ddb_client = boto3.resource("dynamodb")
+ddb_table = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
 
 
 def get_emails_addresses(user_sub):
@@ -42,9 +42,10 @@ def lambda_handler(event, context):
     logger.info(event)
     try:
         user_sub = get_user_sub_from_event(event)
-        logger.info("user_sub getting addresses: %s", user_sub)
+        logger.info("## user_sub getting addresses: %s", user_sub)
         items = get_emails_addresses(user_sub)
         return create_response(status_code=200, body=items)
     except Exception as e:
-        logger.error("exception getting addresses: %s", e)
+        logger.error("## Error getting addresses:")
+        logger.exception(e)
         return create_response(status_code=500, body=e)

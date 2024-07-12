@@ -14,13 +14,13 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-dynamodb = boto3.resource("dynamodb")
-addresses_table = dynamodb.Table(os.environ["addresses_table_name"])
+ddb_client = boto3.resource("dynamodb")
+table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
 
 
 def address_exists(address: str):
     try:
-        response = addresses_table.get_item(Key={"address": address.lower()})
+        response = table_addresses.get_item(Key={"address": address.lower()})
         if "Item" in response:
             item = response["Item"]
             if item["address"]:
@@ -30,8 +30,8 @@ def address_exists(address: str):
         else:
             return False
     except ClientError as e:
-        logger.info("## DynamoDB Client Exception")
-        logger.info(e.response["Error"]["Message"])
+        logger.warning("## DynamoDB Client Exception")
+        logger.warning(e.response["Error"]["Message"])
         return False
 
 

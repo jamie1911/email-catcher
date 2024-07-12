@@ -6,7 +6,7 @@
   * No front end prompts when deleting emails or email addresses
   * Failures aren't really returned to the front end yet
   * etc
-  
+
 
 ## Diagram
 ![Diagram](diagram.jpg "Quick Diagram")
@@ -46,9 +46,9 @@ When you login and view your addresses, you can go into one of the addresses. On
 * If you want to use the summary feature, your account must be allowed to use the Amazon Titan Model `amazon.titan-text-lite-v1`
 * install/have npm locally to allow deploy.py to build and deploy the front end
 * install/have python locally with venv module installed
-* install python requirements.txt file
+* install python deploy_requirements.txt file
 * have pulumi local environment setup
-* run `python deploy.py --command preview --stack NAME OF STACK --region us-east-2 (default)
+* run `python deploy_pulumi.py --command preview --stack NAME OF STACK --region us-east-2 (default)
 * if the above works and the changes look okay, change --command to up
 
 ## Demo

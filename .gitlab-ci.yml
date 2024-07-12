@@ -92,3 +92,4 @@ Pulumi AWS EMAIL-CATCHER Production Deploy:
   script:
     - pip install -r pulumi_deploy_requirements.txt
     - python -u pulumi_deploy.py --stack-name prod --command up
+

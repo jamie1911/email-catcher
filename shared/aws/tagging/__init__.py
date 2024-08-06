@@ -1,3 +1,4 @@
+import os
 import inspect
 import pulumi
 

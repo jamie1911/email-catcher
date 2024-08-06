@@ -160,7 +160,7 @@ aws.route53.Record(
     f"{local_name}_route53_record",
     name=cloudfront_web_domain,
     zone_id=route35_cloudfront_route35_zone_id,
-    type="A",
+    type=aws.route53.RecordType.A,
     aliases=[
         aws.route53.RecordAliasArgs(
             name=cf_distribution.domain_name,

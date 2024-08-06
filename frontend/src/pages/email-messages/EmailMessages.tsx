@@ -15,6 +15,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { get, del } from 'aws-amplify/api';
 import moment from "moment";
 import { Cache } from 'aws-amplify/utils';
+import { LuMousePointerClick } from "react-icons/lu";
+import { MdDeleteForever } from "react-icons/md";
 
 const EmailMessages = () => {
     const cacheExpirationDuration = 5 * 60 * 1000; // 5 minutes
@@ -24,6 +26,7 @@ const EmailMessages = () => {
     const navigate = useNavigate();
     const params = useParams();
     const emailAddress = params.addressId;
+
     const handleBackClick = () => {
         navigate(`/email-accounts/`);
     };
@@ -38,6 +41,29 @@ const EmailMessages = () => {
             await restOperation.response;
             console.log('DELETE call succeeded');
             handleBackClick();
+        } catch (err) {
+            console.error('DELETE call failed: ', err);
+            setError(err);
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    async function handleDeleteMessage(event, emailAddress, messageId) {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+            setLoading(true)
+            const restOperation = del({
+                apiName: 'disposible',
+                path: `addresses/${emailAddress}/${messageId}`,
+            });
+            await restOperation.response;
+
+            // Remove the deleted message from the local state
+            setMessages((prevMessages) => prevMessages.filter(message => message.messageId !== messageId));
+
+            console.log('DELETE call succeeded');
         } catch (err) {
             console.error('DELETE call failed: ', err);
             setError(err);
@@ -81,17 +107,18 @@ const EmailMessages = () => {
             setLoading(false);
         }
     }
+
     useEffect(() => {
         getMessages(emailAddress); // Call the function to fetch addresses
-    }, []);
+    }, [emailAddress]);
 
     const handleMessageClick = (emailAddress, messageId) => {
         navigate(`/email-accounts/${encodeURIComponent(emailAddress)}/${messageId}`);
     };
 
-
     if (loading) return <div>Loading...</div>;
     if (error) return <div>Error fetching messages</div>;
+
     return (
         <>
             <Flex className="header-flex">
@@ -107,7 +134,7 @@ const EmailMessages = () => {
                 <div style={{ flex: 1 }}></div> {/* Spacer element */}
                 <Button onClick={() => handleBackClick()} justifyContent="flex-end" size="small">Back</Button>
             </Flex>
-            <br></br>
+            <br />
             <br />
             <View
                 backgroundColor="var(--amplify-colors-white)"
@@ -115,8 +142,8 @@ const EmailMessages = () => {
                 maxWidth="100%"
                 padding="1rem"
                 minHeight="50vh"
-
-            ><br></br>
+            >
+                <br />
                 <ScrollView>
                     <Table size="small" highlightOnHover={true} className="responsive-table">
                         <TableHead>
@@ -124,18 +151,27 @@ const EmailMessages = () => {
                                 <TableCell>From</TableCell>
                                 <TableCell>Subject</TableCell>
                                 <TableCell>Date</TableCell>
-                                <TableCell>Action</TableCell>
+                                <TableCell>Actions</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
                             {messages.map((item, index) => {
                                 return (
                                     <TableRow onClick={() => handleMessageClick(emailAddress, item.messageId)} key={index}>
-                                        <TableCell className="responsive-cell" data-label="From">{item.isNew && <FiMail />}&nbsp;{item.commonHeaders.sender || item.commonHeaders.returnPath}</TableCell>
+                                        <TableCell className="responsive-cell" data-label="From">
+                                            {!item.is_read && <FiMail />}&nbsp;{item.commonHeaders.sender || item.commonHeaders.returnPath}
+                                        </TableCell>
                                         <TableCell className="responsive-cell" data-label="Subject">{item.commonHeaders.subject}</TableCell>
                                         <TableCell className="responsive-cell" data-label="Date">{moment(item.commonHeaders.date).calendar()}</TableCell>
                                         <TableCell className="responsive-cell" data-label="Action">
-                                            <Button size="small" onClick={() => handleMessageClick(emailAddress, item.messageId)}>Select</Button>
+                                            <Flex justifyContent="flex-start" alignItems="center" gap="small">
+                                                <Button size="small" colorTheme="error" onClick={(event) => handleDeleteMessage(event, emailAddress, item.messageId)}>
+                                                    <MdDeleteForever />&nbsp;Delete
+                                                </Button>
+                                                <Button size="small" onClick={() => handleMessageClick(emailAddress, item.messageId)}>
+                                                    <LuMousePointerClick />&nbsp;Select
+                                                </Button>
+                                            </Flex>
                                         </TableCell>
                                     </TableRow>
                                 );

@@ -22,35 +22,34 @@ LOGGING_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 logger = logging.getLogger()
 logger.setLevel(LOGGING_LEVEL)
 
-brk_client = boto3.client(
-    service_name="bedrock-runtime",
-    config=Config(
-        region_name="us-east-1",
-    ),
-)
+brk_client = boto3.client("bedrock-runtime", config=Config(region_name="us-east-1"))
 s3 = boto3.client("s3")
-
 ddb_client = boto3.resource("dynamodb")
 email_table = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
 address_table = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
 
+TOKEN_LIMIT = 4096
+AVG_TOKEN_CHAR_CONVERSION = 3.25
+CHARACTER_LIMIT = int(TOKEN_LIMIT * AVG_TOKEN_CHAR_CONVERSION - 1000)
+
 
 def summarize(text: str):
-    logger.debug("## Summarizing text via bedrock-runtime: %s", text)
-    logger.info("## Bedrock estimated Tokens Usage: %s", (len(text) / 6))
-    prompt = f"""
-Please provide a summary of the following email content. Do not add any information that is not mentioned in the text below.
-
+    prompt = f"""Please provide a summary of the following email content. Do not add any information that is not mentioned in the text.
 <text>
 {text}
 </text>
 """
+    logger.debug("## Summarizing text via bedrock-runtime: %s", prompt)
+    logger.info(
+        "## Bedrock estimated Tokens Usage: %s",
+        (len(prompt) / AVG_TOKEN_CHAR_CONVERSION),
+    )
     try:
         body = json.dumps(
             {
                 "inputText": prompt,
                 "textGenerationConfig": {
-                    "maxTokenCount": 4096,
+                    "maxTokenCount": TOKEN_LIMIT,
                     "stopSequences": [],
                     "temperature": 0,
                     "topP": 1,
@@ -92,30 +91,10 @@ def set_summary(destination, messageId, summary):
         )
         logger.error("## DynamoDB Client Exception")
         logger.error(e.response["Error"]["Message"])
-    except Exception as e:
-        logger.error(
-            f"## Error setting summary for destination: {destination} and messageId: {messageId}"
-        )
-        logger.exception(e)
 
 
-def store_email(email, receipt):
-    try:
-        email_table.put_item(
-            Item={
-                "destination": email["destination"][0],
-                "messageId": email["messageId"],
-                "timestamp": email["timestamp"],
-                "source": email["source"],
-                "commonHeaders": email["commonHeaders"],
-                "bucketName": receipt["action"]["bucketName"],
-                "bucketObjectKey": receipt["action"]["objectKey"],
-                "isNew": True,
-            }
-        )
-    except ClientError as e:
-        logger.error("## DynamoDB Client Exception")
-        logger.error(e.response["Error"]["Message"])
+def extract_recent_content(email_body: str, char_limit: int) -> str:
+    return email_body[:char_limit]
 
 
 def lambda_handler(event, context):
@@ -124,26 +103,34 @@ def lambda_handler(event, context):
     logger.info("## EVENT")
     logger.info(event)
 
-    message = json.loads(event["Records"][0]["Sns"]["Message"])
-    store_email(message["mail"], message["receipt"])
+    message = event
 
-    if check_summarize(address_table, message["mail"]["destination"][0]):
+    if check_summarize(address_table, message["destination"]):
+        data = s3.get_object(
+            Bucket=message["bucketName"],
+            Key=message["bucketObjectKey"],
+        )
+        email_content_bytes = data["Body"].read()
+        msg = BytesParser(policy=policy.default).parse(io.BytesIO(email_content_bytes))
         try:
-            data = s3.get_object(
-                Bucket=message["receipt"]["action"]["bucketName"],
-                Key=message["receipt"]["action"]["objectKey"],
-            )
-            email_content_bytes = data["Body"].read()
-            msg = BytesParser(policy=policy.default).parse(
-                io.BytesIO(email_content_bytes)
-            )
             email_body = msg.get_body(preferencelist=("plain", "html")).get_content()
             pattern = r"<https?://[^>]*>"
             email_body = re.sub(pattern, "", email_body)
+            email_body = re.sub(r"\n>", "", email_body)
+            email_body = re.sub(r">+", "", email_body)
+            email_body = re.sub(r"[ \t]+", " ", email_body)
+            email_body = extract_recent_content(email_body, CHARACTER_LIMIT)
             summary = summarize(email_body)
-            set_summary(
-                message["mail"]["destination"][0], message["mail"]["messageId"], summary
-            )
+            set_summary(message["destination"], message["messageId"], summary)
         except Exception as e:
             logger.error("## Failed to parse email for AI summary:")
             logger.exception(e)
+
+    email_table.update_item(
+        Key={"destination": message["destination"], "messageId": message["messageId"]},
+        UpdateExpression="SET is_processed = :processed",
+        ExpressionAttributeValues={":processed": True},
+    )
+    return {
+        "is_processed": True,
+    }

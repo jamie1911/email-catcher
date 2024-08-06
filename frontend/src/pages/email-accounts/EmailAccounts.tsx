@@ -18,6 +18,8 @@ import { get, post } from 'aws-amplify/api';
 import awsExports from "src/aws-exports";
 import { FiPlus } from "react-icons/fi";
 import { Cache } from 'aws-amplify/utils';
+import { FiCopy,  } from 'react-icons/fi';  // Import the copy icon
+import { LuMousePointerClick } from "react-icons/lu";
 
 const EmailAccounts = () => {
   const ADDRESSES_CACHE_KEY = 'addressesCache';
@@ -28,8 +30,20 @@ const EmailAccounts = () => {
   const [error, setError] = useState<unknown>(null);
   const [newAddress, setNewAddress] = useState(String);
   const [summarizeEmails, setSummarizeEmails] = useState(Boolean);
+
   const handleAccountClick = (emailAddress) => {
     navigate(`/email-accounts/${encodeURIComponent(emailAddress)}`);
+  };
+
+  const handleCopyEmail = (event, emailAddress) => {
+    event.preventDefault();
+    event.stopPropagation();
+    navigator.clipboard.writeText(emailAddress)
+      .then(() => {
+      })
+      .catch(err => {
+        console.error('Failed to copy: ', err);
+      });
   };
 
   async function getAddresses(useCache = false) {
@@ -102,7 +116,7 @@ const EmailAccounts = () => {
       <Flex direction="row" alignItems="center" gap="small" justifyContent="flex-end" className="form-flex">
         <Label htmlFor="new_address" className="form-label">New Address:</Label>
         <Input id="new_address" name="new_address" className="form-input" placeholder={`@${awsExports.emailDomain}`} onChange={(e) => setNewAddress(e.target.value)} />
-        <CheckboxField isDisabled={loading} label="Summerize Emails" name="summarize_emails" checked={summarizeEmails} onChange={(e) => setSummarizeEmails(e.target.checked)} />
+        <CheckboxField isDisabled={loading} label="Summarize Emails" name="summarize_emails" checked={summarizeEmails} onChange={(e) => setSummarizeEmails(e.target.checked)} />
         <Button isLoading={loading} isDisabled={loading} variation="primary" className="form-button" onClick={handleSubmit}>
           <FiPlus />
         </Button>
@@ -114,14 +128,13 @@ const EmailAccounts = () => {
         maxWidth="100%"
         padding="1rem"
         minHeight="50vh"
-
       >
         <ScrollView width="100%">
           <Table highlightOnHover={true} size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Address</TableCell>
-                <TableCell>Action</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -130,8 +143,11 @@ const EmailAccounts = () => {
                   <TableRow onClick={() => handleAccountClick(item.address)} key={index}>
                     <TableCell>{item.address}</TableCell>
                     <TableCell>
-                      <Flex justifyContent="flex-start" alignItems="center">
-                        <Button onClick={() => handleAccountClick(item.address)} size="small">Select</Button>
+                      <Flex justifyContent="flex-start" alignItems="center" gap="small">
+                        <Button onClick={(event) => handleCopyEmail(event, item.address)} size="small">
+                          <FiCopy />&nbsp;Copy
+                        </Button>
+                        <Button onClick={() => handleAccountClick(item.address)} size="small"><LuMousePointerClick/>&nbsp;Select</Button>
                       </Flex>
                     </TableCell>
                   </TableRow>

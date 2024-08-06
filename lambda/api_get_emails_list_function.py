@@ -3,7 +3,7 @@ import logging
 
 import boto3
 from botocore.exceptions import ClientError
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Key, Attr
 from aws_xray_sdk.core import xray_recorder, patch_all
 
 from util import check_access, create_response, get_user_sub_from_event
@@ -26,8 +26,9 @@ table_emails = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
 def get_emails(destination, user_sub):
     try:
         if check_access(table_addresses, user_sub, destination):
-            filtering_exp = Key("destination").eq(destination)
-            response = table_emails.query(KeyConditionExpression=filtering_exp)
+            filter_key = Key("destination").eq(destination)
+            filter_attr = Attr("is_processed").eq(True)
+            response = table_emails.query(KeyConditionExpression=filter_key, FilterExpression=filter_attr)
             items = response["Items"]
             sorted_items = sorted(items, key=lambda x: x["timestamp"], reverse=True)
             return sorted_items

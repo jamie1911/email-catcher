@@ -5,6 +5,10 @@ stack = pulumi.get_stack()
 aws_account_id = aws.get_caller_identity().account_id
 aws_region = aws.get_region().name
 product_name = f"{stack}_email_catcher"
+
+LAMBDA_TIMEOUT = 120
+LAMBDA_PYTHON_VERSION = "python3.12"
+
 ses_email_domain = (
     "emails.baldanzasolutions.com"
     if stack.lower() == "prod"

@@ -18,7 +18,7 @@ ddb_client = boto3.resource("dynamodb")
 table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
 
 
-def address_exists(address: str):
+def address_exists(address: str) -> bool:
     try:
         response = table_addresses.get_item(Key={"address": address.lower()})
         if "Item" in response:

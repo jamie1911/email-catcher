@@ -1,15 +1,16 @@
 import React, { useEffect, useState, useRef } from "react";
 import {
-    Badge, Card, Flex, Heading, View, Button, Text, Divider
+    Badge, Card, Flex, Heading, View, Button, Text, Divider, Image
 } from "@aws-amplify/ui-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, del } from 'aws-amplify/api';
 import PostalMime from 'postal-mime';
 import DOMPurify from 'dompurify';
 
-const EmailMessages = () => {
-    const [message, setMessage] = useState<any>(null)
-    const [summary, setSummary] = useState<string>(null)
+const EmailMessage = () => {
+    const [message, setMessage] = useState<any>(null);
+    const [summary, setSummary] = useState<string>(null);
+    const [attachments, setAttachments] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<unknown>(null);
     const params = useParams();
@@ -24,7 +25,6 @@ const EmailMessages = () => {
         return DOMPurify.sanitize(incoming_html)
     };
 
-
     async function getMessage(emailAddress, messageId) {
         try {
             setLoading(true)
@@ -34,10 +34,11 @@ const EmailMessages = () => {
             });
             const { body } = await restOperation.response;
             const raw = await body.json();
-            const parser = new PostalMime()
+            const parser = new PostalMime();
             const response = await parser.parse(raw["body"]);
             setMessage(response);
-            setSummary(raw["summary"])
+            setSummary(raw["summary"]);
+            setAttachments(raw["attachments"] || []);
         } catch (err) {
             console.error('GET call failed: ', err);
             setError(err);
@@ -72,7 +73,7 @@ const EmailMessages = () => {
         const iframe = iframeRef.current;
         iframe.style.width = '100%';
         iframe.style.border = 'none';
-        iframe.style.height = '0px'
+        iframe.style.height = '0px';
         iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
     };
 
@@ -82,7 +83,7 @@ const EmailMessages = () => {
             const doc = iframeRef.current.contentDocument;
             doc.open();
             doc.write(cleanHTMLContent);
-            doc.close()
+            doc.close();
             resizeIframe();
             iframeRef.current.addEventListener('load', resizeIframe);
         }
@@ -116,7 +117,6 @@ const EmailMessages = () => {
                 <Button size="small" isLoading={loading} isDisabled={loading} onClick={() => handleBackClick(emailAddress)}>Back</Button>
             </Flex>
             <br></br>
-            <br />
             {summary && (
                 <Card style={{
                     width: '100%', // Set width to 100% to fit the screen
@@ -127,9 +127,58 @@ const EmailMessages = () => {
                     <Text textDecoration="underline">Summary</Text>
                     <br></br>
                     <Text>{summary}</Text>
+                    <br></br>
                 </Card>
             )}
-            <br></br>
+            {attachments.length > 0 && (<Card
+                style={{
+                    width: '100%', // Set width to 100% to fit the screen
+                    maxWidth: '100%', // Ensure it doesn't exceed the screen width
+                    marginBottom: '1rem',
+                    boxSizing: 'border-box', // This ensures padding is included in the width calculation
+                }}
+            >
+                <Text textDecoration="underline">Attachments</Text>
+                <Flex wrap="wrap">
+                    {attachments.map((attachment, index) => (
+                        <View
+                            key={index}
+                            style={{
+                                margin: '1rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                textAlign: 'center',
+                                maxWidth: '150px',
+                            }}
+                        >
+                            {attachment.metadata['Content-Type'].startsWith('image/') ? (
+                                <Image
+                                    src={attachment.url}
+                                    alt={attachment.metadata.filename}
+                                    style={{ width: '150px', height: 'auto' }}
+                                />
+                            ) : (null)}
+                            <Text style={{
+                                marginTop: '0.5rem',
+                                wordWrap: 'break-word', // Ensures text wraps to avoid overflow
+                                maxWidth: '150px', // Ensures text does not extend beyond the set width
+                            }}>
+                                {attachment.metadata.filename}
+                            </Text>
+                            <Button
+                                as="a"
+                                href={attachment.url}
+                                target="_blank"
+                                variation="primary"
+                                style={{ marginTop: '0.5rem' }}
+                            >
+                                Download
+                            </Button>
+                        </View>
+                    ))}
+                </Flex>
+            </Card>)}
             <View
                 backgroundColor="var(--amplify-colors-white)"
                 borderRadius="6px"
@@ -166,4 +215,4 @@ const EmailMessages = () => {
     );
 };
 
-export default EmailMessages;
+export default EmailMessage;

@@ -23,19 +23,23 @@ table_addresses = ddb_client.Table(os.environ["ADDRESS_TABLE_NAME"])
 table_emails = ddb_client.Table(os.environ["EMAILS_TABLE_NAME"])
 
 
-def delete_object(bucket_name, object_name):
+def delete_object(bucket_name, destination, message_id):
     """Delete an object from an S3 bucket
 
     :param bucket_name: string
-    :param object_name: string
+    :param destination: string
+    :param message_id: string
     :return: True if the referenced object was deleted, otherwise False
     """
     logger.info("## Deleting S3")
-    logger.info(bucket_name + object_name)
+    logger.info(f"{bucket_name}: {message_id}")
 
     # Delete the object
     try:
-        s3.delete_object(Bucket=bucket_name, Key=object_name)
+        email_objects = s3.list_objects_v2(Bucket=bucket_name, Prefix=f"stored_emails/{destination}/{message_id}")
+        for email_object in email_objects['Contents']:
+            logger.info(f"Deleting: {email_object['Key']}")
+            s3.delete_object(Bucket=bucket_name, Key=email_object['Key'])
     except ClientError as e:
         logger.error(e)
         return False
@@ -69,9 +73,9 @@ def find_emails(destination):
         logger.error(e.response["Error"]["Message"])
     else:
         # Clean response
-        for I in response["Items"]:
-            delete_object(I["bucketName"], I["bucketObjectKey"])
-            delete_email_item(destination, I["messageId"])
+        for Item in response["Items"]:
+            delete_object(Item["bucketName"], destination, Item["messageId"])
+            delete_email_item(destination, Item["messageId"])
 
 
 def cleanup(address):

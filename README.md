@@ -30,6 +30,7 @@ When you login and view your addresses, you can go into one of the addresses. On
 * React is using Amplify UI to simplify Authentication
 * AWS Cognito for user authentication
 * SES to receive emails
+* State machine to manage extraction and summarization
 * AWS API Gateway for API
 * Lambda functions fronted by API Gateway
 * S3 to store all messages
